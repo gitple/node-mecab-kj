@@ -1,5 +1,5 @@
 {
-  "name": "mecab-ya",
+  "name": "mecab-kj",
   "version": "0.1.2",
   "description": "Yet another mecab wrapper for nodejs",
   "main": "mecab.js",
