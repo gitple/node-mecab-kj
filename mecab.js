@@ -4,7 +4,11 @@ var sq = require('shell-quote');
 
 
 var MECAB_KO_PATH = process.env.MECAB_KO_PATH;
-var MECAB_JA_PATH = process.env.MECAB_JO_PATH;
+var MECAB_KO_DIC_PATH = process.env.MECAB_KO_DIC_PATH;
+var MECAB_JA_PATH = process.env.MECAB_JA_PATH;
+var MECAB_JA_DIC_PATH = process.env.MECAB_JA_DIC_PATH;
+var MECAB_ZH_PATH = process.env.MECAB_ZH_PATH;
+var MECAB_ZH_DIC_PATH = process.env.MECAB_ZH_DIC_PATH;
 if (!process.env.MECAB_KO_PATH) {
   MECAB_KO_PATH=
     process.env.MECAB_LIB_PATH ?
@@ -17,10 +21,16 @@ var buildCommand = function (text, lang) {
   switch(lang) {
     case 'ja':
       return 'LD_LIBRARY_PATH=' + MECAB_JA_PATH + ' ' +
-        sq.quote(['echo', text]) + ' | ' + MECAB_JA_PATH + '/bin/mecab';
+        sq.quote(['echo', text]) + ' | ' + MECAB_JA_PATH + '/bin/mecab' + 
+        (MECAB_JA_DIC_PATH ? ' -d ' + MECAB_JA_DIC_PATH : '');
+    case 'zh':
+      return 'LD_LIBRARY_PATH=' + MECAB_ZH_PATH + ' ' +
+        sq.quote(['echo', text]) + ' | ' + MECAB_ZH_PATH + '/bin/mecab' +
+        (MECAB_JA_DIC_PATH ? ' -d ' + MECAB_ZH_DIC_PATH : '');
     case 'ko':
       return 'LD_LIBRARY_PATH=' + MECAB_KO_PATH + ' ' +
-        sq.quote(['echo', text]) + ' | ' + MECAB_KO_PATH + '/bin/mecab';
+        sq.quote(['echo', text]) + ' | ' + MECAB_KO_PATH + '/bin/mecab' +
+        (MECAB_JA_DIC_PATH ? ' -d ' + MECAB_KO_DIC_PATH : '');
   }
 };
 
@@ -37,6 +47,9 @@ var parseFunctions = {
         case 'ko':
           result.push([elems[0]].concat(elems[1].split(',')[0]));
           return result;
+        case 'zh':
+          result.push([elems[0]].concat(elems[1].split(',')[0]));
+          return result;
         case 'ja': // 名詞,固有名詞,人名
           let tags = elems[1].split(',');
           result.push([elems[0]].concat(tags[0], tags[1], tags[2]));
@@ -45,6 +58,9 @@ var parseFunctions = {
     },
     'posNoCompound': function (result, elems, lang) {
       if (lang === 'ja') { // FIXME: No Compound Noun handing in Japanses
+        return parseFunctions['pos'](result, elems, lang);    
+      }
+      if (lang === 'zh') { // FIXME: No Compound Noun handing in Chinese
         return parseFunctions['pos'](result, elems, lang);    
       }
 
@@ -67,7 +83,7 @@ var parseFunctions = {
       } else {
         result.push([word].concat(tag));
       }
-      return result;
+          return result;
     },
     'orgform': function (result, elems, lang) {
       //console.log(elems);
@@ -97,6 +113,24 @@ var parseFunctions = {
             break;
           }
           result.push([word].concat(tag));
+          return result;
+        case 'zh':
+          switch(tag) {
+            case 'an':
+            case 'i':
+            case 'j':
+            case 'm':
+            case 'n':
+            case 'nr':
+            case 'nt':
+            case 'nx':
+            case 'nz':
+            case 't':
+            case 'v':
+            case 'vn':
+              result.push([word].concat(tag));
+              break;
+          }
           return result;
         case 'ja':
           switch(tag) {
@@ -166,6 +200,19 @@ var parseFunctions = {
           case 'ko':
             if (tag === 'NNG' || tag === 'NNP') {
               result.push(elems[0]);
+            }
+            break;
+          case 'zh':
+            switch(tag) {
+              case 'an':
+              case 'n':
+              case 'nr':
+              case 'nt':
+              case 'nx':
+              case 'nz':
+              case 'vn':
+                result.push(elems[0]);
+                break;
             }
             break;
           case 'ja': //고유명사, 일반명사 see: https://taku910.github.io/mecab/posid.html
