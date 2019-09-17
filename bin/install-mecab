@@ -12,6 +12,7 @@ elif [ "$LANG_DIC" == "ja" ]; then
     URL_MECAB="https://drive.google.com/uc?export=download&id=0B4y35FiV1wh7cENtOXlicTFaRUE"
     URL_MECAB_DIC="https://drive.google.com/uc?export=download&id=0B4y35FiV1wh7MWVlSDBCSXZMTXM"
     GIT_NEOLOGD="https://github.com/neologd/mecab-ipadic-neologd.git"
+    GIT_MECAB_CHINESE="https://github.com/authere/MeCab-Chinese.git"
     DIR_MECAB=mecab-0.996
     DIR_MECAB_DIC=mecab-ipadic-2.7.0-20070801
     OPTIONS_CONFIGURE="--enable-utf8-only --with-charset=utf8"
@@ -47,11 +48,20 @@ export PATH=$PROJECT_HOME/${DIR_BASE}/bin:$PATH
 make
 make install
 
-#replace orignal dic w/ extra dic
+#extra dic neologd
 cd $BUILD_PATH
 [ -n "${GIT_NEOLOGD}" ] && git clone --depth 1 ${GIT_NEOLOGD} && \
   mv $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/ipadic $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/ipadic.org && \
   ./mecab-ipadic-neologd/bin/install-mecab-ipadic-neologd -p $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/ipadic -n -y -u
+
+#extra dic chinese
+cd $BUILD_PATH
+[ -n "${GIT_MECAB_CHINESE}" ] && git clone --depth 1 ${GIT_MECAB_CHINESE} && \
+  mkdir -p $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/chinese &&
+  cat ./MeCab-Chinese/data/v0.3_1.tgz_1 \
+  ./MeCab-Chinese/data/v0.3_1.tgz_2 \
+  ./MeCab-Chinese/data/v0.3_1.tgz_3 | \
+  tar xfz - -C $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/chinese
 
 # clean up
 rm -rf $BUILD_PATH
