@@ -58,9 +58,9 @@ cd $BUILD_PATH
 cd $BUILD_PATH
 [ -n "${GIT_MECAB_CHINESE}" ] && git clone --depth 1 ${GIT_MECAB_CHINESE} && \
   mkdir -p $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/chinese &&
-  cat ./MeCab-Chinese/data/v0.3_1.tgz_1 \
-  ./MeCab-Chinese/data/v0.3_1.tgz_2 \
-  ./MeCab-Chinese/data/v0.3_1.tgz_3 | \
+  cat ./MeCab-Chinese/data/v0.3.tgz_1 \
+  ./MeCab-Chinese/data/v0.3.tgz_2 \
+  ./MeCab-Chinese/data/v0.3.tgz_3 | \
   tar xfz - -C $PROJECT_HOME/${DIR_BASE}/lib/mecab/dic/chinese
 
 # clean up
