@@ -1,37 +1,46 @@
 'use strict';
-var cp = require('child_process');
-var sq = require('shell-quote');
+const cp = require('child_process');
+const process = require('process');
+const sq = require('shell-quote');
+const fs = require("fs");
 
+const MECAB_KO_PATH = process.env.MECAB_KO_PATH;
+const MECAB_KO_DIC_PATH = process.env.MECAB_KO_DIC_PATH;
+const MECAB_JA_PATH = process.env.MECAB_JA_PATH;
+const MECAB_JA_DIC_PATH = process.env.MECAB_JA_DIC_PATH;
+const MECAB_ZH_PATH = process.env.MECAB_ZH_PATH;
+const MECAB_ZH_DIC_PATH = process.env.MECAB_ZH_DIC_PATH;
 
-var MECAB_KO_PATH = process.env.MECAB_KO_PATH;
-var MECAB_KO_DIC_PATH = process.env.MECAB_KO_DIC_PATH;
-var MECAB_JA_PATH = process.env.MECAB_JA_PATH;
-var MECAB_JA_DIC_PATH = process.env.MECAB_JA_DIC_PATH;
-var MECAB_ZH_PATH = process.env.MECAB_ZH_PATH;
-var MECAB_ZH_DIC_PATH = process.env.MECAB_ZH_DIC_PATH;
-if (!process.env.MECAB_KO_PATH) {
-  MECAB_KO_PATH=
-    process.env.MECAB_LIB_PATH ?
-    process.env.MECAB_LIB_PATH :
-    __dirname + '/mecab';
-}
+[ MECAB_KO_PATH, MECAB_KO_DIC_PATH, 
+  MECAB_JA_PATH, MECAB_JA_DIC_PATH, 
+  MECAB_ZH_PATH, MECAB_ZH_DIC_PATH 
+].forEach(function (path) {
+  if (!fs.existsSync(path)) {
+    console.error('Error: path not exist ' + path);
+    process.exit(1);
+  }
+});
 
 let DEFAULT_LANG='ko';
 var buildCommand = function (text, lang) {
+  let base_path, dic_path;
   switch(lang) {
     case 'ja':
-      return 'LD_LIBRARY_PATH=' + MECAB_JA_PATH + ' ' +
-        sq.quote(['echo', text]) + ' | ' + MECAB_JA_PATH + '/bin/mecab' + 
-        (MECAB_JA_DIC_PATH ? ' -d ' + MECAB_JA_DIC_PATH : '');
+      base_path = MECAB_JA_PATH; 
+      dic_path = MECAB_JA_DIC_PATH; 
+      break;
     case 'zh':
-      return 'LD_LIBRARY_PATH=' + MECAB_ZH_PATH + ' ' +
-        sq.quote(['echo', text]) + ' | ' + MECAB_ZH_PATH + '/bin/mecab' +
-        (MECAB_JA_DIC_PATH ? ' -d ' + MECAB_ZH_DIC_PATH : '');
+      base_path = MECAB_ZH_PATH; 
+      dic_path = MECAB_ZH_DIC_PATH; 
+      break;
     case 'ko':
-      return 'LD_LIBRARY_PATH=' + MECAB_KO_PATH + ' ' +
-        sq.quote(['echo', text]) + ' | ' + MECAB_KO_PATH + '/bin/mecab' +
-        (MECAB_JA_DIC_PATH ? ' -d ' + MECAB_KO_DIC_PATH : '');
+      base_path = MECAB_KO_PATH; 
+      dic_path = MECAB_KO_DIC_PATH; 
+      break;
   }
+
+  return 'LD_LIBRARY_PATH=' + base_path + ' ' + sq.quote(['echo', text]) + 
+  ' | ' + base_path + '/bin/mecab -d ' + dic_path;
 };
 
 var execMecab = function (text, lang, callback) {
@@ -58,10 +67,10 @@ var parseFunctions = {
     },
     'posNoCompound': function (result, elems, lang) {
       if (lang === 'ja') { // FIXME: No Compound Noun handing in Japanses
-        return parseFunctions['pos'](result, elems, lang);    
+        return parseFunctions.pos(result, elems, lang);    
       }
       if (lang === 'zh') { // FIXME: No Compound Noun handing in Chinese
-        return parseFunctions['pos'](result, elems, lang);    
+        return parseFunctions.pos(result, elems, lang);    
       }
 
       let word = elems[0];
@@ -90,6 +99,7 @@ var parseFunctions = {
       let word = elems[0];
       let tags = elems[1].split(',');
       let tag = tags[0];
+      let orgForm;
       switch(lang) {
         case 'ko':
           switch(tag.charAt(0)) {
@@ -105,7 +115,7 @@ var parseFunctions = {
               if (tag[1] === 'X') { //보조용언(VX)도 무시.
                 return result;
               }
-              let orgForm = elems[1].split(',')[7];
+              orgForm = elems[1].split(',')[7];
               if (orgForm !== '*') {
                 word = orgForm.split(/\//)[0]; 
               }
@@ -175,7 +185,7 @@ var parseFunctions = {
 // 行き	動詞,自立,*,*,五段・カ行促音便,連用形,行く,イキ,イキ
 // ます	助動詞,*,*,*,特殊・マス,基本形,ます,マス,マス
             case '動詞': //동사만 원형으로
-              let orgForm = tags[6];
+              orgForm = tags[6];
               if (orgForm !== '*') {
                 word = orgForm;
               }
@@ -247,8 +257,8 @@ var parse = function (text, lang, method, callback) {
 
 var pos = function (text, lang, callback) {
     if (typeof lang === 'function') { 
-      lang = DEFAULT_LANG; 
       callback = lang;
+      lang = DEFAULT_LANG; 
     } 
     if (!lang) { lang = DEFAULT_LANG; }
 
@@ -257,8 +267,8 @@ var pos = function (text, lang, callback) {
 
 var posNoCompound = function (text, lang, callback) {
     if (typeof lang === 'function') { 
-      lang = DEFAULT_LANG; 
       callback = lang;
+      lang = DEFAULT_LANG; 
     } 
     if (!lang) { lang = DEFAULT_LANG; }
 
@@ -267,8 +277,8 @@ var posNoCompound = function (text, lang, callback) {
 
 var orgform = function (text, lang, callback) {
     if (typeof lang === 'function') { 
-      lang = DEFAULT_LANG; 
       callback = lang;
+      lang = DEFAULT_LANG; 
     } 
     if (!lang) { lang = DEFAULT_LANG; }
 
@@ -277,8 +287,8 @@ var orgform = function (text, lang, callback) {
 
 var morphs = function (text, lang, callback) {
     if (typeof lang === 'function') { 
-      lang = DEFAULT_LANG; 
       callback = lang;
+      lang = DEFAULT_LANG; 
     } 
     if (!lang) { lang = DEFAULT_LANG; }
 
@@ -287,8 +297,8 @@ var morphs = function (text, lang, callback) {
 
 var nouns = function (text, lang, callback) {
     if (typeof lang === 'function') { 
-      lang = DEFAULT_LANG; 
       callback = lang;
+      lang = DEFAULT_LANG; 
     } 
     if (!lang) { lang = DEFAULT_LANG; }
 

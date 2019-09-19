@@ -82,6 +82,13 @@ mecab.nouns(text, function (err, result) {
 
 You can find out a simple example on [node-mecab-ya-example](https://github.com/golbin/node-mecab-ya-example)
 
+## test
+
+./bin/install_mecab ko
+./bin/install_mecab ja
+. export_sh
+grunt
+
 ## TODO
 
 - Make for Chinese.

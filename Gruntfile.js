@@ -5,6 +5,10 @@ module.exports = function(grunt) {
         },
         jshint: {
             main: ['mecab.js'],
+            options: {
+              node: true,
+              esversion: 6
+            }
         }
     });
 
