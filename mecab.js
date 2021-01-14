@@ -11,9 +11,9 @@ const MECAB_JA_DIC_PATH = process.env.MECAB_JA_DIC_PATH;
 const MECAB_ZH_PATH = process.env.MECAB_ZH_PATH;
 const MECAB_ZH_DIC_PATH = process.env.MECAB_ZH_DIC_PATH;
 
-[ MECAB_KO_PATH, MECAB_KO_DIC_PATH, 
-  MECAB_JA_PATH, MECAB_JA_DIC_PATH, 
-  MECAB_ZH_PATH, MECAB_ZH_DIC_PATH 
+[ MECAB_KO_PATH, MECAB_KO_DIC_PATH,
+  MECAB_JA_PATH, MECAB_JA_DIC_PATH,
+  MECAB_ZH_PATH, MECAB_ZH_DIC_PATH
 ].forEach(function (path) {
   if (!fs.existsSync(path)) {
     console.error('Error: path not exist ' + path);
@@ -21,33 +21,121 @@ const MECAB_ZH_DIC_PATH = process.env.MECAB_ZH_DIC_PATH;
   }
 });
 
-let DEFAULT_LANG='ko';
+const DEFAULT_LANG = 'ko';
+const execChildProcess = {};
+
+let execUseSpawn = false;
+let execIndexCount = 0;
+let execMaxProcessCount = 1;
+
+var init = function (option) {
+  if (option) {
+    if (option.useSpawn) {
+      execUseSpawn = true;
+
+      if (option.maxProcessCount > 0) {
+        execMaxProcessCount = option.maxProcessCount;
+      }
+    }
+  }
+}
+
+var execMecab = function (text, lang, callback) {
+  if (execUseSpawn) {
+    const index = execIndexCount++ % execMaxProcessCount;
+
+    if (!execChildProcess[lang]) {
+      execChildProcess[lang] = {};
+    }
+
+    if (!execChildProcess[lang][index]) {
+      let child;
+
+      if (lang === 'ko') {
+        child = cp.spawn(MECAB_KO_PATH + '/bin/mecab', ['-d', MECAB_KO_DIC_PATH], {env: {LD_LIBRARY_PATH: MECAB_KO_PATH}});
+      } else if (lang === 'ja') {
+        child = cp.spawn(MECAB_JA_PATH + '/bin/mecab', ['-d', MECAB_JA_DIC_PATH], {env: {LD_LIBRARY_PATH: MECAB_JA_PATH}});
+      } else if (lang === 'zh') {
+        child = cp.spawn(MECAB_ZH_PATH + '/bin/mecab', ['-d', MECAB_ZH_DIC_PATH], {env: {LD_LIBRARY_PATH: MECAB_ZH_PATH}});
+      } else {
+        delete execChildProcess[lang];
+        return callback('not supported');
+      }
+
+      execChildProcess[lang][index] = {
+        jobQueue: [],
+        isProcessing: false,
+        process: child
+      };
+
+      execChildProcess[lang][index].process.on('exit', (code) => {
+        delete execChildProcess[lang][index];
+      });
+
+      execChildProcess[lang][index].process.on('error', (err) => {
+        delete execChildProcess[lang][index];
+      });
+
+      execChildProcess[lang][index].process.stdout.on('data', (data) => {
+        setTimeout(() => {
+          if (execChildProcess[lang][index]) {
+            const next = execChildProcess[lang][index].jobQueue[0];
+            if (next) {
+              execChildProcess[lang][index].process.stdin.write(next.text + "\n");
+            } else {
+              execChildProcess[lang][index].isProcessing = false;
+            }
+          }
+        }, 1);
+
+        if (execChildProcess[lang][index]) {
+            const current = execChildProcess[lang][index].jobQueue.shift();
+
+            if (current) {
+            current.callback(null, data.toString());
+            }
+        }
+      });
+    }
+
+    if (execChildProcess[lang][index]) {
+      execChildProcess[lang][index].jobQueue.push({
+        text: text,
+        callback: callback
+      });
+
+      if (!execChildProcess[lang][index].isProcessing) {
+        execChildProcess[lang][index].isProcessing = true;
+        execChildProcess[lang][index].process.stdin.write(text + "\n");
+      }
+    }
+  } else {
+    cp.exec(buildCommand(text, lang), function(err, result) {
+        if (err) { return callback(err); }
+        callback(err, result);
+    });
+  }
+};
+
 var buildCommand = function (text, lang) {
   let base_path, dic_path;
   switch(lang) {
     case 'ja':
-      base_path = MECAB_JA_PATH; 
-      dic_path = MECAB_JA_DIC_PATH; 
+      base_path = MECAB_JA_PATH;
+      dic_path = MECAB_JA_DIC_PATH;
       break;
     case 'zh':
-      base_path = MECAB_ZH_PATH; 
-      dic_path = MECAB_ZH_DIC_PATH; 
+      base_path = MECAB_ZH_PATH;
+      dic_path = MECAB_ZH_DIC_PATH;
       break;
     case 'ko':
-      base_path = MECAB_KO_PATH; 
-      dic_path = MECAB_KO_DIC_PATH; 
+      base_path = MECAB_KO_PATH;
+      dic_path = MECAB_KO_DIC_PATH;
       break;
   }
 
-  return 'LD_LIBRARY_PATH=' + base_path + ' ' + sq.quote(['echo', text]) + 
+  return 'LD_LIBRARY_PATH=' + base_path + ' ' + sq.quote(['echo', text]) +
   ' | ' + base_path + '/bin/mecab -d ' + dic_path;
-};
-
-var execMecab = function (text, lang, callback) {
-    cp.exec(buildCommand(text, lang), function(err, result) {
-        if (err) { return callback(err); }
-        callback(err, result);
-    });    
 };
 
 var parseFunctions = {
@@ -67,10 +155,10 @@ var parseFunctions = {
     },
     'posNoCompound': function (result, elems, lang) {
       if (lang === 'ja') { // FIXME: No Compound Noun handing in Japanses
-        return parseFunctions.pos(result, elems, lang);    
+        return parseFunctions.pos(result, elems, lang);
       }
       if (lang === 'zh') { // FIXME: No Compound Noun handing in Chinese
-        return parseFunctions.pos(result, elems, lang);    
+        return parseFunctions.pos(result, elems, lang);
       }
 
       let word = elems[0];
@@ -83,7 +171,7 @@ var parseFunctions = {
       // NP+VCP+EF,*,F,어딘가요,Inflect,NP,EF,어디/NP/*+이/VCP/*+ᆫ가요/EF/*
       if (tag.charAt(0) === 'N' && (tags[4] === 'Compound' || tags[4] === 'Preanalysis' || tags[4] === 'Inflect')) {
         let compunds = tags[7]; // 강남/NNP/지명+역/NNG/* or  포스텍/NNP/*+기술/NNG/*+지주/NNG/*
-        compunds.split('+').forEach((els)=>{ 
+        compunds.split('+').forEach((els)=>{
           let el = els.split('/');
           if (el[1] && el[1].charAt(0) === 'N') { // only noun parts
             result.push([el[0]].concat(el[1]));
@@ -117,7 +205,7 @@ var parseFunctions = {
               }
               orgForm = elems[1].split(',')[7];
               if (orgForm !== '*') {
-                word = orgForm.split(/\//)[0]; 
+                word = orgForm.split(/\//)[0];
               }
             word += '다';
             break;
@@ -170,7 +258,7 @@ var parseFunctions = {
             case '助詞': // 조사
             case '接続詞': // 접속사
             case '助動詞': // FIXME: 조동사
-            case '連体詞': // FIXME: 연체사, 명사를 수식하는 
+            case '連体詞': // FIXME: 연체사, 명사를 수식하는
             case 'フィラー':  //FIXME: 필러
             case '接頭詞':  //접두사
             case '助動詞':  //FIXME: 조동사
@@ -205,7 +293,7 @@ var parseFunctions = {
         var tags = elems[1].split(',');
         var tag = tags[0];
         var tag1 = tags[1];
-        
+
         switch(lang) {
           case 'ko':
             if (tag === 'NNG' || tag === 'NNP') {
@@ -256,56 +344,57 @@ var parse = function (text, lang, method, callback) {
 };
 
 var pos = function (text, lang, callback) {
-    if (typeof lang === 'function') { 
+    if (typeof lang === 'function') {
       callback = lang;
-      lang = DEFAULT_LANG; 
-    } 
+      lang = DEFAULT_LANG;
+    }
     if (!lang) { lang = DEFAULT_LANG; }
 
     parse(text, lang, 'pos', callback);
 };
 
 var posNoCompound = function (text, lang, callback) {
-    if (typeof lang === 'function') { 
+    if (typeof lang === 'function') {
       callback = lang;
-      lang = DEFAULT_LANG; 
-    } 
+      lang = DEFAULT_LANG;
+    }
     if (!lang) { lang = DEFAULT_LANG; }
 
     parse(text, lang, 'posNoCompound', callback);
 };
 
 var orgform = function (text, lang, callback) {
-    if (typeof lang === 'function') { 
+    if (typeof lang === 'function') {
       callback = lang;
-      lang = DEFAULT_LANG; 
-    } 
+      lang = DEFAULT_LANG;
+    }
     if (!lang) { lang = DEFAULT_LANG; }
 
     parse(text, lang, 'orgform', callback);
 };
 
 var morphs = function (text, lang, callback) {
-    if (typeof lang === 'function') { 
+    if (typeof lang === 'function') {
       callback = lang;
-      lang = DEFAULT_LANG; 
-    } 
+      lang = DEFAULT_LANG;
+    }
     if (!lang) { lang = DEFAULT_LANG; }
 
     parse(text, lang, 'morphs', callback);
 };
 
 var nouns = function (text, lang, callback) {
-    if (typeof lang === 'function') { 
+    if (typeof lang === 'function') {
       callback = lang;
-      lang = DEFAULT_LANG; 
-    } 
+      lang = DEFAULT_LANG;
+    }
     if (!lang) { lang = DEFAULT_LANG; }
 
     parse(text, lang, 'nouns', callback);
 };
 
 module.exports = {
+    init: init,
     pos: pos,
     posNoCompound: posNoCompound,
     orgform: orgform,
