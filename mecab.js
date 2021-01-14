@@ -2,7 +2,7 @@
 const cp = require('child_process');
 const process = require('process');
 const sq = require('shell-quote');
-const fs = require("fs");
+const fs = require('fs');
 
 const MECAB_KO_PATH = process.env.MECAB_KO_PATH;
 const MECAB_KO_DIC_PATH = process.env.MECAB_KO_DIC_PATH;
@@ -65,7 +65,23 @@ var execMecab = function (text, lang, callback) {
       execChildProcess[lang][index] = {
         jobQueue: [],
         isProcessing: false,
-        process: child
+        process: child,
+        run: function () {
+          if (!this.isProcessing) {
+            const self = this;
+
+            this.isProcessing = true;
+
+            setTimeout(() => {
+              const next = self.jobQueue[0];
+              if (next) {
+                self.process.stdin.write(next.lines[0] + '\n');
+              } else {
+                self.isProcessing = false;
+              }
+            }, 1);
+          }
+        }
       };
 
       execChildProcess[lang][index].process.on('exit', (code) => {
@@ -77,37 +93,40 @@ var execMecab = function (text, lang, callback) {
       });
 
       execChildProcess[lang][index].process.stdout.on('data', (data) => {
-        setTimeout(() => {
-          if (execChildProcess[lang][index]) {
-            const next = execChildProcess[lang][index].jobQueue[0];
-            if (next) {
-              execChildProcess[lang][index].process.stdin.write(next.text + "\n");
-            } else {
-              execChildProcess[lang][index].isProcessing = false;
-            }
-          }
-        }, 1);
-
         if (execChildProcess[lang][index]) {
-            const current = execChildProcess[lang][index].jobQueue.shift();
+            const current = execChildProcess[lang][index].jobQueue[0];
 
             if (current) {
-            current.callback(null, data.toString());
+              current.result += data.toString();
+              current.lines.shift();
+
+              if (current.lines.length === 0) {
+                execChildProcess[lang][index].jobQueue.shift();
+
+                try {
+                  current.callback(null, current.result);
+                } catch (e) {
+                  //ignore
+                }
+              }
             }
+
+            execChildProcess[lang][index].isProcessing = false;
+            execChildProcess[lang][index].run();
         }
       });
     }
 
     if (execChildProcess[lang][index]) {
+      const lines = text.split('\n');
+
       execChildProcess[lang][index].jobQueue.push({
-        text: text,
+        lines: lines,
+        result: '',
         callback: callback
       });
 
-      if (!execChildProcess[lang][index].isProcessing) {
-        execChildProcess[lang][index].isProcessing = true;
-        execChildProcess[lang][index].process.stdin.write(text + "\n");
-      }
+      execChildProcess[lang][index].run();
     }
   } else {
     cp.exec(buildCommand(text, lang), function(err, result) {
@@ -328,7 +347,6 @@ var parseFunctions = {
 var parse = function (text, lang, method, callback) {
     execMecab(text, lang, function (err, result) {
         if (err) { return callback(err); }
-
         result = result.split('\n').reduce(function(parsed, line) {
             var elems = line.split('\t');
 
