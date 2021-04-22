@@ -28,6 +28,14 @@ let execUseSpawn = false;
 let execIndexCount = 0;
 let execMaxProcessCount = 1;
 
+function clearExecChildProcess(lang, index, isSendKill) {
+  if (execChildProcess[lang] && execChildProcess[lang][index]) {
+    clearInterval(execChildProcess[lang][index].watchdogTimer);
+    execChildProcess[lang][index].process.kill();
+    delete execChildProcess[lang][index];
+  }
+}
+
 var init = function (option) {
   if (option) {
     if (option.useSpawn) {
@@ -64,6 +72,7 @@ var execMecab = function (text, lang, callback) {
 
       execChildProcess[lang][index] = {
         jobQueue: [],
+        jobRunTime: 0,
         isProcessing: false,
         process: child,
         run: function () {
@@ -71,6 +80,7 @@ var execMecab = function (text, lang, callback) {
             const self = this;
 
             this.isProcessing = true;
+            this.jobRunTime = Date.now();
 
             setTimeout(() => {
               const next = self.jobQueue[0];
@@ -81,15 +91,25 @@ var execMecab = function (text, lang, callback) {
               }
             }, 1);
           }
-        }
+        },
+        watchdogTimer: setInterval(() => {
+          if (execChildProcess[lang][index] &&
+              execChildProcess[lang][index].isProcessing &&
+              (Date.now() - execChildProcess[lang][index].jobRunTime) > 5 * 1000) {
+            console.error(`node-mecab-kj Watchdog Timout`);
+            clearExecChildProcess(lang, index, true);
+          }
+        }, 10 * 1000)
       };
 
-      execChildProcess[lang][index].process.on('exit', (code) => {
-        delete execChildProcess[lang][index];
+      execChildProcess[lang][index].process.on('exit', (code, signal) => {
+        console.error(`node-mecab-kj Exit code: ${code} signal: ${signal}`);
+        clearExecChildProcess(lang, index, false);
       });
 
       execChildProcess[lang][index].process.on('error', (err) => {
-        delete execChildProcess[lang][index];
+        console.error(`node-mecab-kj Error:`, err);
+        clearExecChildProcess(lang, index, true);
       });
 
       execChildProcess[lang][index].process.stdout.on('data', (data) => {
